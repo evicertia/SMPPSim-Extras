@@ -41,6 +41,15 @@ public class AdvancedLifeCycleManager extends LifeCycleManager {
 
 	private int discardThreshold;
 
+	private int DELIVERY_OUTCOME_SUCCESS_OR_FAILURE = 0x0001;
+
+	private int DELIVERY_OUTCOME_FAILURE = 0x0010;
+
+	private boolean HasFlag(int delivery_flag, int flag)
+	{
+		return (delivery_flag & flag) == flag;
+	}
+
 	public AdvancedLifeCycleManager() {
 		discardThreshold = SMPPSim.getDiscardFromQueueAfter();
 		logger.finest("discardThreshold=" + discardThreshold);
@@ -64,7 +73,7 @@ public class AdvancedLifeCycleManager extends LifeCycleManager {
 
 	public MessageState setState(MessageState m) {
 		// Should a transition take place at all?
-		logger.info("Using DeterministicLifeCycleManager");
+		logger.info("Using AdvancedLifeCycleManager...");
 
 		if (isTerminalState(m.getState()))
 		{
@@ -98,55 +107,40 @@ public class AdvancedLifeCycleManager extends LifeCycleManager {
 			m.setFinal_time(System.currentTimeMillis());
 			// If delivery receipt requested prepare it....
 			SubmitSM p = m.getPdu();
-			logger.info("Message:"+p.getSeq_no()+" state="+getStateName(m.getState()));
-			logger.info("p.getRegistered_delivery_flag() on dec:  " + p.getRegistered_delivery_flag());
+			logger.info("Message:"+p.getSeq_no()+". Message State="+getStateName(m.getState()) + ". CurrentState:" + currentState);
 			logger.info("p.getRegistered_delivery_flag() on hex:  " + Integer.toHexString(p.getRegistered_delivery_flag()));
-			logger.info("p.getRegistered_delivery_flag() on bin:  " + Integer.toBinaryString(p.getRegistered_delivery_flag()));
-			logger.info("currentState:" + currentState );
-			logger.info("state:" + m.getState());
 
-			if (IsFlagActivate(p.getRegistered_delivery_flag(),DELIVERY_OUTCOME_SUCCESS_OR_FAILURE,1) && currentState != m.getState()) {
-				logger.info("(p.getRegistered_delivery_flag() & 0x0001 ) == 1 && currentState != m.getState()) was true.");
+			if (HasFlag(p.getRegistered_delivery_flag(), DELIVERY_OUTCOME_SUCCESS_OR_FAILURE) && currentState != m.getState()) {
 				prepDeliveryReceipt(m, p);
 			} else {
-				if (IsFlagActivate(p.getRegistered_delivery_flag(),DELIVERY_OUTCOME_FAILURE,2) && currentState != m.getState()) {
-					logger.info("((p.getRegistered_delivery_flag() & 0x0010) == 2 && currentState != m.getState()) was true");
+				if (HasFlag(p.getRegistered_delivery_flag(), DELIVERY_OUTCOME_FAILURE) && currentState != m.getState()) {
 					if (isFailure(m.getState())) {
-						logger.info("isFailure(m.getState()) is true. ");
 						prepDeliveryReceipt(m, p);
 					}
 				}
 			}
 		}
-		logger.info("Finish Using DeterministicLifeCycleManager");
+
 		return m;
 	}
 
+	/*
+	Info about mask to apply:
 
-		private int DELIVERY_OUTCOME_SUCCESS_OR_FAILURE = 0x0001;
-		private int DELIVERY_OUTCOME_FAILURE = 0x0010;
+	7 6 5 4 3 2 1 0
+	x x x x x x 0 0 No MC Delivery Receipt requested (default)
+	x x x x x x 0 1 MC Delivery Receipt requested where final delivery outcome is delivery success or failure
+	x x x x x x 1 0 MC Delivery Receipt requested where the final delivery outcome is delivery failure.
+	x x x x x x 1 1 MC Delivery Receipt requested where the final delivery outcome is success
 
-		private boolean IsFlagActivate(int flag, int maskToCompare, int expectedValue)
-		{
-			return (flag & maskToCompare) == expectedValue;
-		}
+	x x x x 0 0 x x No recipient SME acknowledgment requested (default)
+	x x x x 0 1 x x SME Delivery Acknowledgement requested
+	x x x x 1 0 x x SME Manual/User Acknowledgment requested SME originated Acknowledgement (bits 3 and 2)
+	x x x x 1 1 x x Both Delivery and Manual/User Acknowledgment requested
 
-		/*
-		Info about mask to apply:
+	x x x 0 x x x x No Intermediate notification requested (default)
+	x x x 1 x x x x Intermediate notification requested
 
-		7 6 5 4 3 2 1 0
-		x x x x x x 0 0 No MC Delivery Receipt requested (default)
-		x x x x x x 0 1 MC Delivery Receipt requested where final delivery outcome is delivery success or failure
-		x x x x x x 1 0 MC Delivery Receipt requested where the final delivery outcome is delivery failure.
-		x x x x x x 1 1 MC Delivery Receipt requested where the final delivery outcome is success
+	*/
 
-		x x x x 0 0 x x No recipient SME acknowledgment requested (default)
-		x x x x 0 1 x x SME Delivery Acknowledgement requested
-		x x x x 1 0 x x SME Manual/User Acknowledgment requested SME originated Acknowledgement (bits 3 and 2)
-		x x x x 1 1 x x Both Delivery and Manual/User Acknowledgment requested
-
-		x x x 0 x x x x No Intermediate notification requested (default)
-		x x x 1 x x x x Intermediate notification requested
-
-		*/
 }
