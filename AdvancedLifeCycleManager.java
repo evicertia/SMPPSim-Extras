@@ -45,14 +45,14 @@ public class AdvancedLifeCycleManager extends LifeCycleManager {
 
 	private int DELIVERY_OUTCOME_FAILURE = 0x0010;
 
-	private boolean HasFlag(int delivery_flag, int flag)
-	{
-		return (delivery_flag & flag) == flag;
-	}
-
 	public AdvancedLifeCycleManager() {
 		discardThreshold = SMPPSim.getDiscardFromQueueAfter();
 		logger.finest("discardThreshold=" + discardThreshold);
+	}
+
+	private boolean HasFlag(int delivery_flag, int flag)
+	{
+		return (delivery_flag & flag) == flag;
 	}
 
 	boolean isFailure(byte state) {
