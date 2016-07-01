@@ -41,31 +41,46 @@ public class AdvancedLifeCycleManager extends LifeCycleManager {
 
 	private int discardThreshold;
 
+	private int DELIVERY_OUTCOME_SUCCESS_OR_FAILURE = 0x0001;
+
+	private int DELIVERY_OUTCOME_FAILURE = 0x0010;
+
 	public AdvancedLifeCycleManager() {
 		discardThreshold = SMPPSim.getDiscardFromQueueAfter();
 		logger.finest("discardThreshold=" + discardThreshold);
 	}
 
-        boolean isFailure(byte state) {
-                switch (state) {
-                case PduConstants.DELIVERED:
-                        return false;
-                case PduConstants.ACCEPTED:
-                        return false;
-                default:
-                        return true;
-                }
-        }
+	private boolean HasFlag(int delivery_flag, int flag)
+	{
+		return (delivery_flag & flag) == flag;
+	}
 
-        void prepDeliveryReceipt(MessageState m, SubmitSM p) {
-                logger.info("Delivery Receipt requested");
-                smsc.prepareDeliveryReceipt(p, m.getMessage_id(), m.getState(), 1, 1, m.getErr());
-        }
+	boolean isFailure(byte state) {
+		switch (state) {
+		case PduConstants.DELIVERED:
+				return false;
+		case PduConstants.ACCEPTED:
+				return false;
+		default:
+				return true;
+			}
+	}
+
+	void prepDeliveryReceipt(MessageState m, SubmitSM p) {
+		logger.info("Delivery Receipt requested");
+		smsc.prepareDeliveryReceipt(p, m.getMessage_id(), m.getState(), 1, 1, m.getErr());
+	}
 
 	public MessageState setState(MessageState m) {
 		// Should a transition take place at all?
+		logger.info("Using AdvancedLifeCycleManager...");
+
 		if (isTerminalState(m.getState()))
+		{
+			logger.info("isTerminalState before change state.");
 			return m;
+		}
+
 		byte currentState = m.getState();
 		String dest = m.getPdu().getDestination_addr();
 		if (dest.substring(0, 1).equals("1")) {
@@ -88,20 +103,44 @@ public class AdvancedLifeCycleManager extends LifeCycleManager {
 			m.setErr(0);
 		}
 		if (isTerminalState(m.getState())) {
+			logger.info("isTerminalState after change state.");
 			m.setFinal_time(System.currentTimeMillis());
 			// If delivery receipt requested prepare it....
 			SubmitSM p = m.getPdu();
-			logger.info("Message:"+p.getSeq_no()+" state="+getStateName(m.getState()));
-			if (((p.getRegistered_delivery_flag() & 1) != 0) && currentState != m.getState()) {
+			logger.info("Message:"+p.getSeq_no()+". Message State="+getStateName(m.getState()) + ". CurrentState:" + currentState);
+			logger.info("p.getRegistered_delivery_flag() on hex:  " + Integer.toHexString(p.getRegistered_delivery_flag()));
+
+			if (HasFlag(p.getRegistered_delivery_flag(), DELIVERY_OUTCOME_SUCCESS_OR_FAILURE) && currentState != m.getState()) {
 				prepDeliveryReceipt(m, p);
 			} else {
-				if (((p.getRegistered_delivery_flag() & 2) != 0) && currentState != m.getState()) {
+				if (HasFlag(p.getRegistered_delivery_flag(), DELIVERY_OUTCOME_FAILURE) && currentState != m.getState()) {
 					if (isFailure(m.getState())) {
 						prepDeliveryReceipt(m, p);
 					}
 				}
 			}
 		}
+
 		return m;
 	}
+
+	/*
+	Info about mask to apply:
+
+	7 6 5 4 3 2 1 0
+	x x x x x x 0 0 No MC Delivery Receipt requested (default)
+	x x x x x x 0 1 MC Delivery Receipt requested where final delivery outcome is delivery success or failure
+	x x x x x x 1 0 MC Delivery Receipt requested where the final delivery outcome is delivery failure.
+	x x x x x x 1 1 MC Delivery Receipt requested where the final delivery outcome is success
+
+	x x x x 0 0 x x No recipient SME acknowledgment requested (default)
+	x x x x 0 1 x x SME Delivery Acknowledgement requested
+	x x x x 1 0 x x SME Manual/User Acknowledgment requested SME originated Acknowledgement (bits 3 and 2)
+	x x x x 1 1 x x Both Delivery and Manual/User Acknowledgment requested
+
+	x x x 0 x x x x No Intermediate notification requested (default)
+	x x x 1 x x x x Intermediate notification requested
+
+	*/
+
 }
